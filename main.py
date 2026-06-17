@@ -107,6 +107,10 @@ async def procesar_comprobante(request: Request):
         total_comprobante = parse_float(body.get("Importe total del comprobante", 0))
 
         # 7. Control numérico (tolerancia ±1 peso)
+        # Se usa solo uno de los dos tributos: otros_trib_globales tiene prioridad;
+        # si vale 0, se usa imp_internos.
+        tributo_efectivo = otros_trib_globales if otros_trib_globales > 0 else imp_internos
+
         sumatoria_componentes = (
             neto_gravado
             + suma_ivas
@@ -116,8 +120,7 @@ async def procesar_comprobante(request: Request):
             + percepcion_iigg
             + percepcion_iibb
             + imp_municipales
-            + imp_internos
-            + otros_trib_globales
+            + tributo_efectivo
         )
 
         if abs(total_comprobante - sumatoria_componentes) > 1.0:
