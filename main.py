@@ -1,4 +1,5 @@
 import re
+from datetime import date, timedelta
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -23,6 +24,22 @@ def parse_float(value) -> float:
         return float(val_str)
     except ValueError:
         return 0.0
+
+
+def parse_fecha(value) -> str:
+    """Convierte fecha: string DD/MM/YYYY o serial numérico de Excel/Sheets a DD/MM/YYYY."""
+    if value is None:
+        return ""
+    val_str = str(value).strip()
+    if not val_str:
+        return ""
+    try:
+        serial = int(float(val_str))
+        if serial > 1000:
+            return (date(1899, 12, 30) + timedelta(days=serial)).strftime("%d/%m/%Y")
+    except (ValueError, TypeError):
+        pass
+    return val_str
 
 
 def to_comma_str(value: float) -> str:
@@ -165,7 +182,7 @@ async def procesar_comprobante(request: Request):
 
         # 9. Construcción del JSON de salida
         resultado = {"Compras": {
-            "Fecha de emisión": body.get("Fecha de emisión", "").strip(),
+            "Fecha de emisión": parse_fecha(body.get("Fecha de emisión")),
             "Tipo de comprobante": tipo_comprobante,
             "Punto de venta": punto_venta,
             "Número de comprobante": num_comprobante,
