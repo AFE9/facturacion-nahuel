@@ -32,6 +32,16 @@ def to_comma_str(value: float) -> str:
     return f"{value:.2f}".replace(".", ",")
 
 
+ALICUOTA_MAP = {
+    "21%":   {"coef": 0.21,  "codigo": "0005"},
+    "10.5%": {"coef": 0.105, "codigo": "0004"},
+    "27%":   {"coef": 0.27,  "codigo": "0006"},
+    "5%":    {"coef": 0.05,  "codigo": "0008"},
+    "2.5%":  {"coef": 0.025, "codigo": "0009"},
+    "0%":    {"coef": 0,     "codigo": "0003"},
+}
+
+
 @app.post("/api")
 async def procesar_comprobante(request: Request):
     try:
@@ -82,14 +92,16 @@ async def procesar_comprobante(request: Request):
         ivas_obj = body.get("Importes de IVA", {})
         cant_alicuotas = 0
         suma_ivas = 0.0
+        alicuotas_raw = []
 
         if isinstance(ivas_obj, dict):
             for tasa, valor in ivas_obj.items():
-                if valor and str(valor).strip() != "":
+                if valor and str(valor).strip() not in ("", "0"):
                     val_float = parse_float(valor)
                     if val_float > 0:
                         cant_alicuotas += 1
                         suma_ivas += val_float
+                        alicuotas_raw.append((tasa, str(valor).strip()))
 
         if suma_ivas == 0.0:
             suma_ivas = parse_float(body.get("Importe total de IVA del comprobante", 0))
@@ -133,8 +145,26 @@ async def procesar_comprobante(request: Request):
                 }
             )
 
-        # 8. Construcción del JSON de salida
-        resultado = {
+        # 8. Construcción de alícuotas
+        alicuotas_list = []
+        for tasa_key, valor_str in alicuotas_raw:
+            map_entry = ALICUOTA_MAP.get(tasa_key, {})
+            coef = map_entry.get("coef", 0)
+            codigo = map_entry.get("codigo", "")
+            iva_float = parse_float(valor_str)
+            neto_alicuota = to_comma_str(iva_float / coef) if coef > 0 else "0"
+            alicuotas_list.append({
+                "Tipo de comprobante": tipo_comprobante,
+                "Punto de venta": punto_venta,
+                "Número de comprobante": num_comprobante,
+                "CUIT del emisor": cuit_emisor,
+                "Neto gravado alicuota": neto_alicuota,
+                "Codigo de alícuota": codigo,
+                "Importe de IVA": valor_str,
+            })
+
+        # 9. Construcción del JSON de salida
+        resultado = {"Compras": {
             "Fecha de emisión": body.get("Fecha de emisión", "").strip(),
             "Tipo de comprobante": tipo_comprobante,
             "Punto de venta": punto_venta,
@@ -152,7 +182,7 @@ async def procesar_comprobante(request: Request):
             "Cantidad de alícuotas de IVA presentes": cant_alicuotas,
             "Importe total de IVA del comprobante.": to_comma_str(suma_ivas),
             "Importe de otros tributos globales.": to_comma_str(otros_trib_globales),
-        }
+        }, "Alicuotas": alicuotas_list}
 
         return JSONResponse(content=resultado, status_code=200)
 
